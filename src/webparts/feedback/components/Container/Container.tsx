@@ -12,6 +12,7 @@ import { DropdownOptions } from '../../DropdownOptions';
 import * as strings from 'FeedbackWebPartStrings';
 import { IArticleInfo } from '../../../../models/IArticleInfo';
 
+
 const buttonStyles = { root: { marginRight: 8 } };
 const dialogContentProps = {
   type: DialogType.normal,
@@ -71,7 +72,7 @@ export const Container: React.FunctionComponent<IContainerProps> = props => {
       }
     });
   }
-
+// console.log(props.currentUser + "logggggiiiiiiiin")
   let defaultCategoryValue = DropdownOptions.Options.find(o => o.key === props.selectedCategory);
   const feedbackService = new FeedbackService();
   const [isOpen, setIsOpen] = React.useState(false);
@@ -110,9 +111,10 @@ export const Container: React.FunctionComponent<IContainerProps> = props => {
     if (props.listitemid == null){
       console.log("List item ID is null. Please run this on a site page.")
     }
-    feedbackService.sendEmailToOwnerGroup(txtValue, props.listitemid, (newDefaultCategory) ? newDefaultCategory.text : categoryValue, props.currentUser.displayName, props.currentUser.email);
+    let fbService = feedbackService.sendEmailToOwnerGroup(txtValue, props.listitemid, (newDefaultCategory) ? newDefaultCategory.text : categoryValue, props.currentUser.email, setIsDialogVisible);
     dismissPanel();
-    setIsDialogVisible(true);
+    // (fbService) ? setIsDialogVisible(false) : setIsDialogVisible(true);
+    // setIsDialogVisible(true);
     setCategoryValue(defaultCategoryValue.text);
     setTxtValue("");
   };

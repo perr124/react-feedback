@@ -8,6 +8,7 @@ import "@pnp/sp/site-users/web";
 import "@pnp/sp/lists";
 import "@pnp/sp/items";
 import "@pnp/sp/site-groups/web";
+import { IItemAddResult } from "@pnp/sp/items";
 // import { EmailProperties } from '@pnp/sp';
 import { BaseService } from './base.service';
 import { LogHelper } from '../utilities';
@@ -23,10 +24,12 @@ export class FeedbackService extends BaseService {
   }
 
   public async getArticleInfo(listitemid): Promise<IArticleInfo> {
-    var item = await sp.web.lists.getByTitle("Site Pages").items.getById(listitemid).select("Title", "EncodedAbsUrl").get();
+    var item = await sp.web.lists.getByTitle("Site Pages").items.getById(listitemid).select("Title", "KBArticleOwners", "KBSecondaryArticleOwners", "EncodedAbsUrl").get();
 
     let articleInfo: IArticleInfo = {
       title: item["Title"],
+      articleOwners: item["KBArticleOwners"],
+      secondaryArticleOwners: item["KBSecondaryArticleOwners"],
       url: item["EncodedAbsUrl"]
     };
 
@@ -56,44 +59,65 @@ export class FeedbackService extends BaseService {
     return;
   }
 
-  public async sendEmailToOwnerGroup(feedback, listitemid, category, currentUserName, currentUserEmail) {
+  public async sendEmailToOwnerGroup(feedback, listitemid, category, currentUserEmail, setIsDialogVisible) {
     let articleInfo = await this.getArticleInfo(listitemid);
 
-    let principals: IPrincipalInfo[] = await sp.utility.expandGroupsToPrincipals(["Feedback Owners"]);
-
+    var user = await sp.web.ensureUser(currentUserEmail);
+    
+    //Replace new lines & decode
     if (feedback.indexOf("\n") > -1) {
       feedback = feedback.replace(/\n/g, '<br/>');
     }
 
-    var emails: string[] = [];
-    for (var i = 0; i < principals.length; i++) {
-      if (principals[i].Email) {
-        emails.push(principals[i].Email);
-      }
-      else {
-        LogHelper.warning("FeedbackService", "sendEmailToOwnerGroup", `No email for ${principals[i].LoginName}`);
-      }
+    const listName = "Feedback Archive"
+
+    try{
+      //Add new feedback to list
+      const feedbackList: IItemAddResult = await sp.web.lists.getByTitle(listName).items.add({
+        Title: articleInfo.title,
+        KBArticleID: listitemid,
+        KBCategory: category,
+        KBSubmittedDate: new Date(),
+        KBSubmittedById: user.data.Id,
+        KBSubmittedByEmail: currentUserEmail,
+        KBRelatedArticleUrl: articleInfo.url,
+        KBFeedbackBody: feedback,
+        KBArticleOwners: (articleInfo.articleOwners == null || articleInfo.articleOwners == undefined) ? "" : articleInfo.articleOwners.join(),
+        KBSecondaryArticleOwners: (articleInfo.secondaryArticleOwners == null || articleInfo.secondaryArticleOwners == undefined) ? "" : articleInfo.secondaryArticleOwners.join()
+      });
+      setIsDialogVisible(true);
+      this.sendEmailToFeedbackSender(articleInfo, feedback, listitemid, currentUserEmail);
+    }catch(e){
+      alert("Error occured while trying to submit feedback. Please try again later. If issue persits, please contact administrator.")
     }
+    // var emails: string[] = [];
+    // for (var i = 0; i < principals.length; i++) {
+    //   if (principals[i].Email) {
+    //     emails.push(principals[i].Email);
+    //   }
+    //   else {
+    //     LogHelper.warning("FeedbackService", "sendEmailToOwnerGroup", `No email for ${principals[i].LoginName}`);
+    //   }
+    // }
 
-    console.log("Owner Emails: " + emails.join(";"));
+    // console.log("Owner Emails: " + emails.join(";"));
 
-    if (emails && emails.length > 0) {
-      const emailProps: IEmailProperties = {
-        To: emails,
-        Subject: (articleInfo.title == "Home") ? "Feedback has been provided on the Homepage (" + category + ")" : "Feedback for " + articleInfo.title + " (" + category + ")",
-        Body: (articleInfo.title == "Home" || listitemid == 1) ? "\"" + feedback + "\"<br/><br/>Submitted by: " + currentUserName + " <a href=\"mailto:" + currentUserEmail + "\">" + currentUserEmail + "</a><br/>"
-          : "\"" + feedback + "\"<br/><br/>Submitted by: " + currentUserName + " <a href=\"mailto:" + currentUserEmail + "\">" + currentUserEmail + "</a><<br/><br/>Article can be found here: <a href=\"" + articleInfo.url + "\">" + articleInfo.url + "</a>"
-      };
+    // if (emails && emails.length > 0) {
+    //   const emailProps: IEmailProperties = {
+    //     To: emails,
+    //     Subject: (articleInfo.title == "Home") ? "Feedback has been provided on the Homepage (" + category + ")" : "Feedback for " + articleInfo.title + " (" + category + ")",
+    //     Body: (articleInfo.title == "Home" || listitemid == 1) ? "\"" + feedback + "\"<br/><br/>Submitted by: " + currentUserName + " <a href=\"mailto:" + currentUserEmail + "\">" + currentUserEmail + "</a><br/>"
+    //       : "\"" + feedback + "\"<br/><br/>Submitted by: " + currentUserName + " <a href=\"mailto:" + currentUserEmail + "\">" + currentUserEmail + "</a><<br/><br/>Article can be found here: <a href=\"" + articleInfo.url + "\">" + articleInfo.url + "</a>"
+    //   };
 
-      await sp.utility.sendEmail(emailProps)
-        .catch(e => {
-          super.handleHttpError('sendEmail', e);
-          throw e;
-        });
-      LogHelper.info("FeedbackService", "sendEmailToOwnerGroup", `Email Sent`);
-    }
+    //   await sp.utility.sendEmail(emailProps)
+    //     .catch(e => {
+    //       super.handleHttpError('sendEmail', e);
+    //       throw e;
+    //     });
+    //   LogHelper.info("FeedbackService", "sendEmailToOwnerGroup", `Email Sent`);
+    // }
 
-    this.sendEmailToFeedbackSender(articleInfo, feedback, listitemid, currentUserEmail);
   }
 
 }
